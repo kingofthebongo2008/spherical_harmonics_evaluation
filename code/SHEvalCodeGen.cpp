@@ -34,7 +34,8 @@ using namespace std;
 
 // set to generate SSE code instead of vanilla C
 // does 4 evaluations in parallel...
-#define GENSSE
+//#define GENSSE
+#define GENAVX
 
 // simple utility functions
 
@@ -42,7 +43,9 @@ string sConst(double d)
 {
     ostringstream sstream;
     sstream.precision(16);
-#ifdef GENSSE
+#if defined(GENAVX)
+    sstream << "_mm256_set1_ps(" << d << "f)";
+#elif defined(GENSSE)
     sstream << "_mm_set_ps1("<<d<<"f)";
 #else
     sstream << d << "f";
@@ -54,7 +57,9 @@ string sMul(string &s1, string &s2)
 {
     ostringstream sstream;
 
-#ifdef GENSSE
+#if defined(GENAVX)
+    sstream << "_mm256_mul_ps(" << s1 << "," << s2 << ")";
+#elif defined(GENSSE)
     sstream << "_mm_mul_ps("<<s1<<","<<s2<<")";
 #else
     sstream << s1 << "*" << s2;
@@ -66,7 +71,9 @@ string sAdd(string &s1, string &s2)
 {
     ostringstream sstream;
 
-#ifdef GENSSE
+#if defined(GENAVX)
+    sstream << "_mm256_add_ps(" << s1 << "," << s2 << ")";
+#elif GENSSE
     sstream << "_mm_add_ps("<<s1<<","<<s2<<")";
 #else
     sstream << s1 << " + " << s2;
@@ -78,7 +85,9 @@ string sSub(string &s1, string &s2)
 {
     ostringstream sstream;
 
-#ifdef GENSSE
+#if defined(GENAVX)
+    sstream << "_mm256_sub_ps(" << s1 << "," << s2 << ")";
+#elif defined(GENSSE)
     sstream << "_mm_sub_ps("<<s1<<","<<s2<<")";
 #else
     sstream << s1 << " - " << s2;
@@ -90,7 +99,10 @@ string sSub(string &s1, string &s2)
 string sSHIndex(int idx)
 {
     ostringstream sstream;
-#ifdef GENSSE
+
+#if defined(GENAVX)
+    sstream << "pSH + " << idx << "*8";
+#elif defined(GENSSE)
     sstream << "pSH + " << idx << "*4";
 #else
     sstream << "pSH[" << idx << "]";
@@ -101,7 +113,9 @@ string sSHIndex(int idx)
 string sAssign(string &sVar, string &sRHS)
 {
     ostringstream sstream;
-#ifdef GENSSE
+#if defined(GENAVX)
+    sstream << "_mm256_store_ps(" << sVar << "," << sRHS << ")";
+#elif defined(GENSSE)
     sstream << "_mm_store_ps(" << sVar << "," << sRHS << ")";
 #else
     sstream << sVar << " = " << sRHS;
@@ -114,6 +128,13 @@ string sSSELoad(string sAddr)
 {
     ostringstream sstream;
     sstream << "_mm_load_ps("<< sAddr << ")";
+    return sstream.str();
+}
+
+string sAVXLoad(string sAddr)
+{
+    ostringstream sstream;
+    sstream << "_mm256_load_ps(" << sAddr << ")";
     return sstream.str();
 }
 
@@ -243,7 +264,12 @@ void BuildSHEvalCode(string &sResult, const unsigned int lmax)
 
    const double dSqrt2 = sqrt(2.0);
 
-#ifdef GENSSE
+#if defined(GENAVX)
+   ssResult << "void SHEval" << lmax + 1 << "(const float * __restrict pX, const float *__restrict pY, const float *__restrict pZ, float *__restrict pSH)\n{\n";
+   ssResult << "__m256 fX,fY,fZ;\n";
+   ssResult << "__m256 fC0,fC1,fS0,fS1,fTmpA,fTmpB,fTmpC;\n";
+   ssResult << "fX = _mm256_load_ps(pX);\nfY = _mm256_load_ps(pY);\nfZ = _mm256_load_ps(pZ);\n\n";
+#elif defined(GENSSE)
     ssResult << "void SHEval" << lmax + 1<< "(const float *pX, const float *pY, const float *pZ, float *pSH)\n{\n";
     ssResult << "__m128 fX,fY,fZ;\n";
     ssResult << "__m128 fC0,fC1,fS0,fS1,fTmpA,fTmpB,fTmpC;\n";
@@ -254,7 +280,9 @@ void BuildSHEvalCode(string &sResult, const unsigned int lmax)
 #endif
 
    if (lmax >= 2) {
-#ifdef GENSSE
+#if defined(GENAVX)
+       ssResult <<  "__m256 fZ2 = " << sMul(g_sZ, g_sZ) << ";\n\n";
+#elif defined(GENSSE)
         ssResult << "__m128 fZ2 = " << sMul(g_sZ,g_sZ) << ";\n\n";
 #else
         ssResult << "float fZ2 = fZ*fZ;\n\n";
@@ -291,7 +319,11 @@ void BuildSHEvalCode(string &sResult, const unsigned int lmax)
       string sPm2 = sSHIndex((l-2)*(l-2)+(l-2));
       idx = l*l+l;
 
-#ifdef GENSSE
+#if defined(GENAVX)
+      // have to issue SSE load instructions for above...
+      sPm1 = sAVXLoad(sPm1);
+      sPm2 = sAVXLoad(sPm2);
+#elif GENSSE
       // have to issue SSE load instructions for above...
       sPm1 = sSSELoad(sPm1);
       sPm2 = sSSELoad(sPm2);
