@@ -37,7 +37,9 @@ extern void BuildSHEvalCode(string &sResult, const unsigned int lmax);
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-   FILE *f = fopen(argv[1],"wb");
+    FILE *f = nullptr;
+    
+    fopen_s(&f, argv[1],"wb");
 
    for(unsigned int ii=2;ii<=9;ii++) {
       string sTmp;
